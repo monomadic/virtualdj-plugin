@@ -1,0 +1,4 @@
+target/
+bundle/
+# Atomix SDK headers: no redistribution grant, fetch them yourself
+vendor/
