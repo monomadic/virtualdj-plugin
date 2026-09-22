@@ -21,11 +21,13 @@ end (`~/…/VirtualDJ/rust-tremolo.log` is the capture):
   `GetInfo("get_version")` → `E_INVALIDARG` with `0.0` written anyway, exactly
   the HRESULT-is-the-answer behavior the reference repo documents.
 - `OnStart`/`OnStop` (vtable slots 8/9) via `effect_active` toggles.
-- `OnProcessSamples` (slot 10) is verified against a *real compiler-generated
-  vtable call* by [fakehost/fakehost.cpp](fakehost/fakehost.cpp), which
-  `dlopen`s the built bundle and drives it through the actual SDK headers,
-  both teardown paths included; it has not yet been observed in-host with
-  audio playing (no track was played during the live session).
+- `OnProcessSamples` (slot 10) with real audio: a 138 BPM track playing on
+  deck 1 read a mean VU of ~0.65 (samples 0.33-0.91) dry, and ~0.40 (0.17-0.66)
+  with the tremolo active - matching the effect's 0.35-1.0 gain sweep
+  (predicted mean ~0.44) and dipping well below the dry minimum. The same
+  slot is also driven offline by [fakehost/fakehost.cpp](fakehost/fakehost.cpp),
+  which `dlopen`s the built bundle and drives it through compiler-generated
+  vtable calls from the actual SDK headers, both teardown paths included.
 
 Two host behaviors worth knowing, observed during the live run:
 
@@ -106,17 +108,15 @@ Facts this code is built on, each verified in the reference repo:
 
 ## Roadmap (post-MVP)
 
-1. In-host `OnProcessSamples` confirmation with a playing deck (audible
-   beat-synced tremolo) — the last MVP callback not yet observed live.
-2. Parameter declaration (`DeclareParameter*` — needs pinned storage the host
+1. Parameter declaration (`DeclareParameter*` — needs pinned storage the host
    can write into) and the default parameter UI.
-3. `IVdjPluginStartStop8` and buffer/position DSP variants (slot positions for
+2. `IVdjPluginStartStop8` and buffer/position DSP variants (slot positions for
    StartStop already captured by the harness).
-4. Skin-interface UI (`VDJINTERFACE_SKIN`) with buffers owned for the instance
+3. Skin-interface UI (`VDJINTERFACE_SKIN`) with buffers owned for the instance
    lifetime, per the verified contract.
-5. A generated, typed verb layer from the repo's verb store
+4. A generated, typed verb layer from the repo's verb store
    (`docs/vdjscript-verbs.json` + plugin-channel HRESULT captures): per-verb
    methods choosing `GetInfo` vs `GetStringInfo` and surfacing `HRESULT`s as
    `Result` — the thing the C++ SDK never had.
-6. Video / online-source interfaces (the latter blocked on the second-loading-
+5. Video / online-source interfaces (the latter blocked on the second-loading-
    path question in [Plugin SDK.md](https://github.com/monomadic/virtualdj-api-reference/blob/master/docs/Plugin%20SDK.md) §Loading).
