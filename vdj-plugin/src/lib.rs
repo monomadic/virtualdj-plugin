@@ -102,6 +102,36 @@ pub trait VdjPlugin: Sized + 'static {
         let _ = (host, id);
         None
     }
+
+    /// A custom GUI for the plugin; `None` (the default) → `E_NOTIMPL`, letting
+    /// the host build its default parameter UI.
+    ///
+    /// Called when the plugin's GUI is shown (`effect_show_gui`), and **again
+    /// on every panel open** — the live-verified reload behavior, so a plugin
+    /// may rebuild the skin each call. The returned buffers are stored inside
+    /// the plugin instance for its lifetime, per the verified buffer-lifetime
+    /// contract.
+    fn user_interface(&mut self, host: &Host) -> Option<UserInterface> {
+        let _ = host;
+        None
+    }
+}
+
+/// A custom plugin GUI, as returned by [`VdjPlugin::user_interface`].
+///
+/// Skin: the same XML dialect VirtualDJ skins use, plus a PNG the XML's
+/// sprite offsets index into. Verified constraints (VirtualDJ 2026): the
+/// rendered surface is a **flat element list** — `<group>` renders nothing and
+/// its children are dropped, and `<group class="...">` has crashed the host.
+/// Backtick VDJScript in `format=""`, `action=""` on `<text>`, and
+/// `visibility=""` conditions all render live.
+pub enum UserInterface {
+    Skin {
+        /// Skin XML (`<Skin version="8" width=... height=...>` root).
+        xml: String,
+        /// PNG image the skin draws from (background + sprite states).
+        image: Vec<u8>,
+    },
 }
 
 /// Per-buffer context for [`DspPlugin::process_samples`], snapshotting the

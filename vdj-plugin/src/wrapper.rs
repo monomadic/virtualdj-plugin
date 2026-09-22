@@ -23,7 +23,7 @@
 
 use crate::host::Host;
 use crate::sys::*;
-use crate::{DspContext, DspPlugin, PluginInfo, VdjPlugin};
+use crate::{DspContext, DspPlugin, PluginInfo, UserInterface, VdjPlugin};
 use std::ffi::{c_char, c_void, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
@@ -115,6 +115,7 @@ pub struct Instance<V, X, P> {
     // --- host-invisible from here ---
     vtbl: VtblStorage<V>,
     info: Option<InfoStrings>,
+    ui: Option<UiBuffers>,
     plugin: P,
 }
 
@@ -134,6 +135,18 @@ struct InfoStrings {
 
 fn cstring_lossy(s: &str) -> CString {
     CString::new(s.replace('\0', " ")).expect("NULs removed")
+}
+
+/// Owned backing storage for the buffers handed out in `OnGetUserInterface`.
+///
+/// The verified contract (reference repo, 2026-08-22): the SDK never says when
+/// the host stops reading them, so they are held for the instance's lifetime.
+/// The host calls `OnGetUserInterface` again on every panel open, and the
+/// live-tested pattern (VirtualDJ 2026) is to replace the previous buffers
+/// with the new ones on each call.
+struct UiBuffers {
+    xml: CString,
+    image: Vec<u8>,
 }
 
 impl InfoStrings {
@@ -253,14 +266,36 @@ unsafe extern "C" fn on_get_parameter_string_shim<V, X, P: VdjPlugin>(
     }
 }
 
-#[allow(clippy::extra_unused_type_parameters)] // kept for vtable-construction uniformity
 unsafe extern "C" fn on_get_user_interface_shim<V, X, P: VdjPlugin>(
-    _this: *mut c_void,
-    _iface: *mut TVdjPluginInterface8,
+    this: *mut c_void,
+    iface: *mut TVdjPluginInterface8,
 ) -> HRESULT {
-    // MVP: no custom UI; the host builds the default one from declared
-    // parameters (of which the MVP declares none).
-    E_NOTIMPL
+    if iface.is_null() {
+        return E_INVALIDARG;
+    }
+    let i = inst::<V, X, P>(this);
+    let host = Host::from_cb(i.cb);
+    let built = match catch_unwind(AssertUnwindSafe(|| i.plugin.user_interface(&host))) {
+        Ok(b) => b,
+        Err(_) => return E_FAIL,
+    };
+    match built {
+        // E_NOTIMPL lets the host build the default UI from declared parameters.
+        None => E_NOTIMPL,
+        Some(UserInterface::Skin { xml, image }) => {
+            i.ui = Some(UiBuffers {
+                xml: cstring_lossy(&xml),
+                image,
+            });
+            let ui = i.ui.as_ref().expect("just set");
+            (*iface).type_ = VDJINTERFACE_SKIN;
+            (*iface).xml = ui.xml.as_ptr();
+            (*iface).image_buffer = ui.image.as_ptr() as *mut c_void;
+            (*iface).image_size = ui.image.len() as i32;
+            (*iface).h_wnd = ptr::null_mut();
+            S_OK
+        }
+    }
 }
 
 unsafe extern "C" fn on_start_shim<P: DspPlugin>(this: *mut c_void) -> HRESULT {
@@ -349,6 +384,7 @@ unsafe fn create_instance<V, X: Default, P: VdjPlugin>(slots: V) -> *mut c_void 
             slots,
         },
         info: None,
+        ui: None,
         plugin: P::new(),
     });
     let raw = Box::into_raw(boxed);

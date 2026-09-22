@@ -116,15 +116,18 @@ int main(int argc, char **argv) {
 
     STAGE("OnGetPluginInfo");
     TVdjPluginInfo8 info;
+    bool is_tremolo = false;
     memset(&info, 0xAB, sizeof info);
     hr = p->OnGetPluginInfo(&info);
     CHECK(hr == S_OK, "returns S_OK");
     CHECK(info.PluginName && strlen(info.PluginName) > 0, "PluginName set");
     CHECK(info.Bitmap == NULL, "Bitmap nulled (not left poisoned)");
-    if (info.PluginName)
+    if (info.PluginName) {
         printf("  name='%s' author='%s' version='%s' flags=%u\n", info.PluginName,
                info.Author ? info.Author : "?", info.Version ? info.Version : "?",
                (unsigned)info.Flags);
+        is_tremolo = strstr(info.PluginName, "Tremolo") != NULL;
+    }
 
     STAGE("OnLoad");
     hr = p->OnLoad();
@@ -141,20 +144,44 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 1024; i++) buf[i] = 1.0f;
     hr = p->OnProcessSamples(buf, 512);
     CHECK(hr == S_OK, "returns S_OK");
-    // Beat-synced tremolo starting on the beat: first frame ~1.0, and the gain
-    // falls monotonically across the buffer. 512 frames is only ~2.3% of a
-    // 22050-sample beat, so the drop is small (~0.003) but must be present.
-    CHECK(fabsf(buf[0] - 1.0f) < 1e-3, "gain ~1.0 at beat start");
-    CHECK(buf[1022] < buf[0] - 1e-4, "gain decreasing across the buffer");
+    bool finite = true;
+    for (int i = 0; i < 1024; i++)
+        if (!(buf[i] == buf[i]) || fabsf(buf[i]) > 4.0f) { finite = false; break; }
+    CHECK(finite, "output stays finite and sane");
+    if (is_tremolo) {
+        // Beat-synced tremolo starting on the beat: first frame ~1.0, and the
+        // gain falls monotonically across the buffer. 512 frames is ~2.3% of a
+        // 22050-sample beat, so the drop is small (~0.003) but must be present.
+        CHECK(fabsf(buf[0] - 1.0f) < 1e-3, "gain ~1.0 at beat start");
+        CHECK(buf[1022] < buf[0] - 1e-4, "gain decreasing across the buffer");
+    }
 
     STAGE("OnGetParameterString (default E_NOTIMPL)");
     char label[64];
     CHECK(p->OnGetParameterString(0, label, sizeof label) == E_NOTIMPL, "returns E_NOTIMPL");
 
-    STAGE("OnGetUserInterface (default E_NOTIMPL)");
+    STAGE("OnGetUserInterface");
     TVdjPluginInterface8 ui;
-    memset(&ui, 0, sizeof ui);
-    CHECK(p->OnGetUserInterface(&ui) == E_NOTIMPL, "returns E_NOTIMPL");
+    memset(&ui, 0xAB, sizeof ui);
+    hr = p->OnGetUserInterface(&ui);
+    if (hr == E_NOTIMPL) {
+        printf("  ok   no custom UI (E_NOTIMPL)\n");
+    } else {
+        CHECK(hr == S_OK, "returns S_OK");
+        CHECK(ui.Type == VDJINTERFACE_SKIN, "Type == VDJINTERFACE_SKIN");
+        CHECK(ui.Xml != NULL && strlen(ui.Xml) > 0, "Xml non-empty");
+        CHECK(ui.Xml == NULL || strstr(ui.Xml, "<Skin") != NULL, "Xml has a <Skin root");
+        CHECK(ui.ImageBuffer != NULL && ui.ImageSize > 8, "image buffer present");
+        CHECK(ui.ImageBuffer == NULL ||
+                  memcmp(ui.ImageBuffer, "\x89PNG", 4) == 0, "image is a PNG");
+        CHECK(ui.hWnd == NULL, "hWnd nulled (not left poisoned)");
+        // The host re-asks on every panel open; the verified pattern replaces
+        // the buffers each call, so a second call must also succeed.
+        TVdjPluginInterface8 ui2;
+        memset(&ui2, 0xAB, sizeof ui2);
+        CHECK(p->OnGetUserInterface(&ui2) == S_OK && ui2.Xml != NULL,
+              "second call (panel re-open) succeeds");
+    }
 
     STAGE("OnStop");
     CHECK(p->OnStop() == S_OK, "returns S_OK");

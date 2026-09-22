@@ -1,0 +1,11 @@
+[package]
+name = "vdj-rust-nowplaying"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+vdj-plugin = { path = "../../vdj-plugin" }

@@ -1,0 +1,56 @@
+<Skin name="RustNowPlaying" version="8" width="320" height="140">
+    <Copyright>vdj-plugin example</Copyright>
+
+    <textzone>
+        <size width="200" height="14"/>
+        <pos x="12" y="6"/>
+        <text font="arial" size="11" weight="bold" color="#7A8290" align="left"
+              format="RUST NOW PLAYING"/>
+    </textzone>
+
+    <!-- Left deck -->
+    <textzone>
+        <size width="60" height="13"/>
+        <pos x="12" y="36"/>
+        <text font="arial" size="10" weight="bold" color="#566070" align="left" format="LEFT"/>
+    </textzone>
+    <textzone visibility="deck left play">
+        <size width="70" height="13"/>
+        <pos x="238" y="36"/>
+        <text font="arial" size="10" weight="bold" color="#37D67A" align="right" format="PLAYING"/>
+    </textzone>
+    <textzone visibility="deck left loaded">
+        <size width="296" height="18"/>
+        <pos x="12" y="52"/>
+        <text font="arial" size="14" weight="bold" color="#FFFFFF" align="left"
+              format="`deck left get_artist` - `deck left get_title`"/>
+    </textzone>
+    <textzone visibility="deck left loaded ? false : true">
+        <size width="296" height="18"/>
+        <pos x="12" y="52"/>
+        <text font="arial" size="13" color="#4A505C" align="left" format="no track loaded"/>
+    </textzone>
+
+    <!-- Right deck -->
+    <textzone>
+        <size width="60" height="13"/>
+        <pos x="12" y="92"/>
+        <text font="arial" size="10" weight="bold" color="#566070" align="left" format="RIGHT"/>
+    </textzone>
+    <textzone visibility="deck right play">
+        <size width="70" height="13"/>
+        <pos x="238" y="92"/>
+        <text font="arial" size="10" weight="bold" color="#37D67A" align="right" format="PLAYING"/>
+    </textzone>
+    <textzone visibility="deck right loaded">
+        <size width="296" height="18"/>
+        <pos x="12" y="108"/>
+        <text font="arial" size="14" weight="bold" color="#FFFFFF" align="left"
+              format="`deck right get_artist` - `deck right get_title`"/>
+    </textzone>
+    <textzone visibility="deck right loaded ? false : true">
+        <size width="296" height="18"/>
+        <pos x="12" y="108"/>
+        <text font="arial" size="13" color="#4A505C" align="left" format="no track loaded"/>
+    </textzone>
+</Skin>

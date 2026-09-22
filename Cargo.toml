@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["vdj-plugin", "examples/tremolo"]
+members = ["vdj-plugin", "examples/tremolo", "examples/nowplaying"]
 
 [profile.release]
 # catch_unwind at every FFI shim needs unwinding; never set panic = "abort".

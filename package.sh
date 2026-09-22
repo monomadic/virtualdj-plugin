@@ -21,8 +21,14 @@ case "${1-}" in
         NAME=RustTremolo
         SUBDIR_DEFAULT=SoundEffect
         ;;
+    nowplaying)
+        PKG=vdj-rust-nowplaying
+        LIB=libvdj_rust_nowplaying.a
+        NAME=RustNowPlaying
+        SUBDIR_DEFAULT=SoundEffect
+        ;;
     *)
-        print -u2 "usage: package.sh <tremolo> [--install]"
+        print -u2 "usage: package.sh <tremolo|nowplaying> [--install]"
         exit 2
         ;;
 esac

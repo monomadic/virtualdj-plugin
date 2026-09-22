@@ -7,6 +7,13 @@ name = "vdj-plugin"
 version = "0.1.0"
 
 [[package]]
+name = "vdj-rust-nowplaying"
+version = "0.1.0"
+dependencies = [
+ "vdj-plugin",
+]
+
+[[package]]
 name = "vdj-rust-tremolo"
 version = "0.1.0"
 dependencies = [
