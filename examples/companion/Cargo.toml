@@ -1,0 +1,32 @@
+[package]
+name = "vdj-rust-companion"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+vdj-plugin = { path = "../../vdj-plugin" }
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSGeometry",
+    "NSString",
+] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSApplication",
+    "objc2-core-foundation",
+    "NSColor",
+    "NSControl",
+    "NSFont",
+    "NSGraphics",
+    "NSResponder",
+    "NSText",
+    "NSTextField",
+    "NSView",
+    "NSWindow",
+] }
+dispatch2 = "0.3"

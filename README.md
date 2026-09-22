@@ -36,6 +36,16 @@ end (`~/…/VirtualDJ/rust-tremolo.log` is the capture):
   `visibility=""` gating on `loaded` and `play`, and re-opened the panel
   cleanly (the host re-asks on every open, buffers replaced each call).
 
+- The **companion-window architecture** (2026-09-22, same build): the
+  [companion example](examples/companion/) is a *basic* plugin in `AutoStart/`
+  — the verified headless lifecycle — that spawns its own poll thread with a
+  `SharedHost`, creates a native floating `NSWindow` on the main thread, and
+  binds its visibility to the VDJScript variable `$nowplaying`. Live-verified:
+  the window pops up when VirtualDJ starts, shows both decks' artist/title
+  with a PLAYING badge, and `toggle '$nowplaying'` — the action any custom
+  button or pad can carry — hides and re-shows it, with the close button
+  writing the variable back so button LEDs stay truthful.
+
 Two host behaviors worth knowing, observed during the live run:
 
 - **Effect bundles load lazily.** VirtualDJ lists a new bundle in the effects
@@ -63,6 +73,7 @@ Two host behaviors worth knowing, observed during the live run:
 | Layout harness (C++ reference diffed against the Rust `#[repr(C)]` types) | [vdj-plugin/tests/layout.rs](vdj-plugin/tests/layout.rs) |
 | Example: beat-synced tremolo Sound Effect | [examples/tremolo/](examples/tremolo/) |
 | Example: custom skin GUI showing the left/right deck tracks | [examples/nowplaying/](examples/nowplaying/) |
+| Example: standalone floating now-playing window (AutoStart + `NSWindow`) | [examples/companion/](examples/companion/) |
 | Bundle packaging + install | [package.sh](package.sh) |
 
 macOS only (arm64 exercised; the layouts are Itanium-ABI shapes that hold for

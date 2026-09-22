@@ -27,8 +27,15 @@ case "${1-}" in
         NAME=RustNowPlaying
         SUBDIR_DEFAULT=SoundEffect
         ;;
+    companion)
+        PKG=vdj-rust-companion
+        LIB=libvdj_rust_companion.a
+        NAME=RustCompanion
+        SUBDIR_DEFAULT=AutoStart
+        EXTRA_FRAMEWORKS=(-framework AppKit)
+        ;;
     *)
-        print -u2 "usage: package.sh <tremolo|nowplaying> [--install]"
+        print -u2 "usage: package.sh <tremolo|nowplaying|companion> [--install]"
         exit 2
         ;;
 esac
@@ -81,6 +88,7 @@ PLIST
 clang \
     -arch arm64 \
     -bundle \
+    "${EXTRA_FRAMEWORKS[@]:-}" \
     -u _DllGetClassObject \
     -Wl,-exported_symbol,_DllGetClassObject \
     "$HERE/target/release/$LIB" \

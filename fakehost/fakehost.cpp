@@ -96,18 +96,26 @@ int main(int argc, char **argv) {
     CHECK(getobj != NULL, "dlsym DllGetClassObject");
     if (!getobj) return 1;
 
-    STAGE("negotiate: declined IIDs answer CLASS_E_CLASSNOTAVAILABLE");
+    STAGE("negotiate (host order: Dsp, Buffer, ..., Basic; first acceptance wins)");
     void *obj = NULL;
     CHECK(getobj(CLSID_VdjPlugin8, IID_IVdjPluginBuffer8, &obj) == CLASS_E_CLASSNOTAVAILABLE && !obj,
           "declines IID_IVdjPluginBuffer8");
-    CHECK(getobj(CLSID_VdjPlugin8, IID_IVdjPluginBasic8, &obj) == CLASS_E_CLASSNOTAVAILABLE && !obj,
-          "declines IID_IVdjPluginBasic8");
-
-    STAGE("negotiate: accept IID_IVdjPluginDsp8");
+    const GUID *accepted_iid = NULL;
+    bool has_dsp = false;
     HRESULT hr = getobj(CLSID_VdjPlugin8, IID_IVdjPluginDsp8, &obj);
-    CHECK(hr == NO_ERROR && obj != NULL, "accepts IID_IVdjPluginDsp8");
+    if (hr == NO_ERROR && obj) {
+        printf("  ok   accepts IID_IVdjPluginDsp8\n");
+        accepted_iid = &IID_IVdjPluginDsp8;
+        has_dsp = true;
+    } else {
+        CHECK(hr == CLASS_E_CLASSNOTAVAILABLE && !obj, "declines IID_IVdjPluginDsp8 cleanly");
+        hr = getobj(CLSID_VdjPlugin8, IID_IVdjPluginBasic8, &obj);
+        CHECK(hr == NO_ERROR && obj != NULL, "accepts IID_IVdjPluginBasic8");
+        accepted_iid = &IID_IVdjPluginBasic8;
+    }
     if (!obj) return 1;
-    IVdjPluginDsp8 *p = (IVdjPluginDsp8 *)obj;
+    IVdjPlugin8 *p = (IVdjPlugin8 *)obj;
+    IVdjPluginDsp8 *dsp = has_dsp ? (IVdjPluginDsp8 *)obj : NULL;
 
     STAGE("host pokes data members");
     FakeCallbacks fake;
@@ -133,27 +141,29 @@ int main(int argc, char **argv) {
     hr = p->OnLoad();
     CHECK(hr == S_OK, "returns S_OK");
 
-    STAGE("OnStart");
-    p->SampleRate = 44100;
-    p->SongBpm = 22050;
-    p->SongPosBeats = 0.0;
-    CHECK(p->OnStart() == S_OK, "returns S_OK");
+    if (dsp) {
+        STAGE("OnStart");
+        dsp->SampleRate = 44100;
+        dsp->SongBpm = 22050;
+        dsp->SongPosBeats = 0.0;
+        CHECK(dsp->OnStart() == S_OK, "returns S_OK");
 
-    STAGE("OnProcessSamples");
-    float buf[1024];
-    for (int i = 0; i < 1024; i++) buf[i] = 1.0f;
-    hr = p->OnProcessSamples(buf, 512);
-    CHECK(hr == S_OK, "returns S_OK");
-    bool finite = true;
-    for (int i = 0; i < 1024; i++)
-        if (!(buf[i] == buf[i]) || fabsf(buf[i]) > 4.0f) { finite = false; break; }
-    CHECK(finite, "output stays finite and sane");
-    if (is_tremolo) {
-        // Beat-synced tremolo starting on the beat: first frame ~1.0, and the
-        // gain falls monotonically across the buffer. 512 frames is ~2.3% of a
-        // 22050-sample beat, so the drop is small (~0.003) but must be present.
-        CHECK(fabsf(buf[0] - 1.0f) < 1e-3, "gain ~1.0 at beat start");
-        CHECK(buf[1022] < buf[0] - 1e-4, "gain decreasing across the buffer");
+        STAGE("OnProcessSamples");
+        float buf[1024];
+        for (int i = 0; i < 1024; i++) buf[i] = 1.0f;
+        hr = dsp->OnProcessSamples(buf, 512);
+        CHECK(hr == S_OK, "returns S_OK");
+        bool finite = true;
+        for (int i = 0; i < 1024; i++)
+            if (!(buf[i] == buf[i]) || fabsf(buf[i]) > 4.0f) { finite = false; break; }
+        CHECK(finite, "output stays finite and sane");
+        if (is_tremolo) {
+            // Beat-synced tremolo starting on the beat: first frame ~1.0, and
+            // the gain falls monotonically across the buffer. 512 frames is
+            // ~2.3% of a 22050-sample beat, so the drop is small but present.
+            CHECK(fabsf(buf[0] - 1.0f) < 1e-3, "gain ~1.0 at beat start");
+            CHECK(buf[1022] < buf[0] - 1e-4, "gain decreasing across the buffer");
+        }
     }
 
     STAGE("OnGetParameterString (default E_NOTIMPL)");
@@ -183,8 +193,10 @@ int main(int argc, char **argv) {
               "second call (panel re-open) succeeds");
     }
 
-    STAGE("OnStop");
-    CHECK(p->OnStop() == S_OK, "returns S_OK");
+    if (dsp) {
+        STAGE("OnStop");
+        CHECK(dsp->OnStop() == S_OK, "returns S_OK");
+    }
 
     STAGE("teardown via Release()");
     p->Release();
@@ -192,10 +204,10 @@ int main(int argc, char **argv) {
 
     STAGE("second instance, teardown via virtual delete (D0 slot)");
     void *obj2 = NULL;
-    hr = getobj(CLSID_VdjPlugin8, IID_IVdjPluginDsp8, &obj2);
+    hr = getobj(CLSID_VdjPlugin8, *accepted_iid, &obj2);
     CHECK(hr == NO_ERROR && obj2 != NULL, "second instance created");
     if (obj2) {
-        delete (IVdjPluginDsp8 *)obj2;
+        delete (IVdjPlugin8 *)obj2;
         printf("  ok   virtual delete returned\n");
     }
 
