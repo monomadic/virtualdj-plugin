@@ -25,7 +25,9 @@ fn find_sdk() -> Option<PathBuf> {
     let vendor = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../vendor");
     let mut stack = vec![vendor];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -64,7 +66,9 @@ fn reference_values() -> Option<HashMap<String, i64>> {
         "layout_ref.cpp failed to compile:\n{}",
         String::from_utf8_lossy(&compile.stderr)
     );
-    let run = Command::new(&out).output().expect("failed to run layout_ref");
+    let run = Command::new(&out)
+        .output()
+        .expect("failed to run layout_ref");
     assert!(run.status.success(), "layout_ref exited nonzero");
     let mut map = HashMap::new();
     for line in String::from_utf8_lossy(&run.stdout).lines() {
@@ -90,19 +94,58 @@ fn layout_matches_the_real_headers() {
     assert_eq!(get("sizeof_guid"), size_of::<Guid>() as i64, "LP64 GUID");
 
     // TVdjPluginInfo8 / TVdjPluginInterface8 shapes.
-    assert_eq!(get("sizeof_plugininfo"), size_of::<TVdjPluginInfo8>() as i64);
-    assert_eq!(get("info_name_off"), offset_of!(TVdjPluginInfo8, plugin_name) as i64);
-    assert_eq!(get("info_author_off"), offset_of!(TVdjPluginInfo8, author) as i64);
-    assert_eq!(get("info_description_off"), offset_of!(TVdjPluginInfo8, description) as i64);
-    assert_eq!(get("info_version_off"), offset_of!(TVdjPluginInfo8, version) as i64);
-    assert_eq!(get("info_bitmap_off"), offset_of!(TVdjPluginInfo8, bitmap) as i64);
-    assert_eq!(get("info_flags_off"), offset_of!(TVdjPluginInfo8, flags) as i64);
-    assert_eq!(get("sizeof_plugininterface"), size_of::<TVdjPluginInterface8>() as i64);
-    assert_eq!(get("iface_type_off"), offset_of!(TVdjPluginInterface8, type_) as i64);
-    assert_eq!(get("iface_xml_off"), offset_of!(TVdjPluginInterface8, xml) as i64);
-    assert_eq!(get("iface_image_off"), offset_of!(TVdjPluginInterface8, image_buffer) as i64);
-    assert_eq!(get("iface_imagesize_off"), offset_of!(TVdjPluginInterface8, image_size) as i64);
-    assert_eq!(get("iface_hwnd_off"), offset_of!(TVdjPluginInterface8, h_wnd) as i64);
+    assert_eq!(
+        get("sizeof_plugininfo"),
+        size_of::<TVdjPluginInfo8>() as i64
+    );
+    assert_eq!(
+        get("info_name_off"),
+        offset_of!(TVdjPluginInfo8, plugin_name) as i64
+    );
+    assert_eq!(
+        get("info_author_off"),
+        offset_of!(TVdjPluginInfo8, author) as i64
+    );
+    assert_eq!(
+        get("info_description_off"),
+        offset_of!(TVdjPluginInfo8, description) as i64
+    );
+    assert_eq!(
+        get("info_version_off"),
+        offset_of!(TVdjPluginInfo8, version) as i64
+    );
+    assert_eq!(
+        get("info_bitmap_off"),
+        offset_of!(TVdjPluginInfo8, bitmap) as i64
+    );
+    assert_eq!(
+        get("info_flags_off"),
+        offset_of!(TVdjPluginInfo8, flags) as i64
+    );
+    assert_eq!(
+        get("sizeof_plugininterface"),
+        size_of::<TVdjPluginInterface8>() as i64
+    );
+    assert_eq!(
+        get("iface_type_off"),
+        offset_of!(TVdjPluginInterface8, type_) as i64
+    );
+    assert_eq!(
+        get("iface_xml_off"),
+        offset_of!(TVdjPluginInterface8, xml) as i64
+    );
+    assert_eq!(
+        get("iface_image_off"),
+        offset_of!(TVdjPluginInterface8, image_buffer) as i64
+    );
+    assert_eq!(
+        get("iface_imagesize_off"),
+        offset_of!(TVdjPluginInterface8, image_size) as i64
+    );
+    assert_eq!(
+        get("iface_hwnd_off"),
+        offset_of!(TVdjPluginInterface8, h_wnd) as i64
+    );
 
     // The host-poked data members of the plugin object. The Rust Instance's
     // own offsets are asserted in wrapper.rs unit tests against these same
@@ -119,9 +162,15 @@ fn layout_matches_the_real_headers() {
     // (Release at 2, OnParameter at 5).
     let basic = |off: usize| (off / 8) as i64;
     assert_eq!(get("slot_onload"), basic(offset_of!(BasicSlots, on_load)));
-    assert_eq!(get("slot_ongetplugininfo"), basic(offset_of!(BasicSlots, on_get_plugin_info)));
+    assert_eq!(
+        get("slot_ongetplugininfo"),
+        basic(offset_of!(BasicSlots, on_get_plugin_info))
+    );
     assert_eq!(get("slot_release"), basic(offset_of!(BasicSlots, release)));
-    assert_eq!(get("slot_onparameter"), basic(offset_of!(BasicSlots, on_parameter)));
+    assert_eq!(
+        get("slot_onparameter"),
+        basic(offset_of!(BasicSlots, on_parameter))
+    );
     assert_eq!(
         get("slot_ongetparameterstring"),
         basic(offset_of!(BasicSlots, on_get_parameter_string))
@@ -130,18 +179,33 @@ fn layout_matches_the_real_headers() {
         get("slot_ongetuserinterface"),
         basic(offset_of!(BasicSlots, on_get_user_interface))
     );
-    assert_eq!(get("dsp_slot_onstart"), basic(offset_of!(DspSlots, on_start)));
+    assert_eq!(
+        get("dsp_slot_onstart"),
+        basic(offset_of!(DspSlots, on_start))
+    );
     assert_eq!(get("dsp_slot_onstop"), basic(offset_of!(DspSlots, on_stop)));
-    assert_eq!(get("dsp_slot_onprocesssamples"), basic(offset_of!(DspSlots, on_process_samples)));
+    assert_eq!(
+        get("dsp_slot_onprocesssamples"),
+        basic(offset_of!(DspSlots, on_process_samples))
+    );
 
     // StartStop shares the DSP's OnStart/OnStop positions (both append to the
     // same 8-slot base) — recorded for the day a StartStop wrapper lands.
-    assert_eq!(get("ss_slot_onstart"), basic(offset_of!(DspSlots, on_start)));
+    assert_eq!(
+        get("ss_slot_onstart"),
+        basic(offset_of!(DspSlots, on_start))
+    );
     assert_eq!(get("ss_slot_onstop"), basic(offset_of!(DspSlots, on_stop)));
 
     // Host callback interface slots.
-    assert_eq!(get("cb_slot_sendcommand"), basic(offset_of!(IVdjCallbacks8Vtbl, send_command)));
-    assert_eq!(get("cb_slot_getinfo"), basic(offset_of!(IVdjCallbacks8Vtbl, get_info)));
+    assert_eq!(
+        get("cb_slot_sendcommand"),
+        basic(offset_of!(IVdjCallbacks8Vtbl, send_command))
+    );
+    assert_eq!(
+        get("cb_slot_getinfo"),
+        basic(offset_of!(IVdjCallbacks8Vtbl, get_info))
+    );
     assert_eq!(
         get("cb_slot_getstringinfo"),
         basic(offset_of!(IVdjCallbacks8Vtbl, get_string_info))
@@ -150,5 +214,8 @@ fn layout_matches_the_real_headers() {
         get("cb_slot_declareparameter"),
         basic(offset_of!(IVdjCallbacks8Vtbl, declare_parameter))
     );
-    assert_eq!(get("cb_slot_getsongbuffer"), basic(offset_of!(IVdjCallbacks8Vtbl, get_song_buffer)));
+    assert_eq!(
+        get("cb_slot_getsongbuffer"),
+        basic(offset_of!(IVdjCallbacks8Vtbl, get_song_buffer))
+    );
 }

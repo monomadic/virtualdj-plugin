@@ -26,7 +26,11 @@ fn log_path() -> Option<std::path::PathBuf> {
 
 fn log_line(text: &str) {
     let Some(path) = log_path() else { return };
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
         let _ = writeln!(f, "{text}");
     }
 }
@@ -53,7 +57,9 @@ impl VdjPlugin for Tremolo {
         // interesting part, so raw variants are used.
         let text = host.get_string_info_raw("get_version", 256);
         let num = host.get_info_raw("get_version");
-        log_line(&format!("loaded: GetStringInfo(get_version)={text:?} GetInfo(get_version)={num:?}"));
+        log_line(&format!(
+            "loaded: GetStringInfo(get_version)={text:?} GetInfo(get_version)={num:?}"
+        ));
         Ok(())
     }
 }

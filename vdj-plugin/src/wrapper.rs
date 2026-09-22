@@ -190,7 +190,9 @@ unsafe extern "C" fn on_get_plugin_info_shim<V, X, P: VdjPlugin>(
         return E_INVALIDARG;
     }
     let i = inst::<V, X, P>(this);
-    let built = catch_unwind(AssertUnwindSafe(|| InfoStrings::from_info(&i.plugin.info())));
+    let built = catch_unwind(AssertUnwindSafe(|| {
+        InfoStrings::from_info(&i.plugin.info())
+    }));
     let strings = match built {
         Ok(s) => s,
         Err(_) => return E_FAIL,
@@ -477,7 +479,10 @@ mod tests {
         assert_eq!(offset_of!(DspFields, sample_rate), 0);
         assert_eq!(offset_of!(DspFields, song_bpm), 4);
         assert_eq!(offset_of!(DspFields, song_pos_beats), 8);
-        assert_eq!(offset_of!(DspInstance<Dummy>, host_fields) + size_of::<DspFields>(), 40);
+        assert_eq!(
+            offset_of!(DspInstance<Dummy>, host_fields) + size_of::<DspFields>(),
+            40
+        );
     }
 
     #[test]

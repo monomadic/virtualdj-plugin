@@ -23,8 +23,9 @@ impl VdjPlugin for NowPlaying {
         PluginInfo {
             name: "Rust Now Playing".into(),
             author: "vdj-plugin".into(),
-            description: "Shows the current track on the left and right decks (vdj-plugin GUI example)"
-                .into(),
+            description:
+                "Shows the current track on the left and right decks (vdj-plugin GUI example)"
+                    .into(),
             version: env!("CARGO_PKG_VERSION").into(),
             flags: 0,
         }

@@ -12,8 +12,7 @@ use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSBackingStoreType, NSColor, NSFont, NSTextAlignment, NSTextField, NSWindow,
-    NSWindowStyleMask,
+    NSBackingStoreType, NSColor, NSFont, NSTextAlignment, NSTextField, NSWindow, NSWindowStyleMask,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use vdj_plugin::SharedHost;
@@ -41,7 +40,9 @@ thread_local! {
 /// Marshal one snapshot onto the main thread and render it.
 pub fn apply(snap: Snapshot, host: SharedHost) {
     DispatchQueue::main().exec_async(move || {
-        let Some(mtm) = MainThreadMarker::new() else { return };
+        let Some(mtm) = MainThreadMarker::new() else {
+            return;
+        };
         UI.with(|cell| {
             let mut ui = cell.borrow_mut();
             let ui = ui.get_or_insert_with(|| build(mtm));

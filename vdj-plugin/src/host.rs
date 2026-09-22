@@ -98,7 +98,8 @@ impl Host {
     /// Numeric query (`GetInfo`). Every numeric VDJScript result — booleans,
     /// counts, 0..1 sliders — comes back through this single `double` channel.
     pub fn get_info(&self, query: &str) -> Result<f64> {
-        self.get_info_raw(query).and_then(|(hr, v)| check(hr).map(|_| v))
+        self.get_info_raw(query)
+            .and_then(|(hr, v)| check(hr).map(|_| v))
     }
 
     /// `GetInfo` preserving the raw `(HRESULT, value)` pair. The value is
@@ -126,7 +127,12 @@ impl Host {
         let c = to_cstring(query)?;
         let mut buf = vec![0u8; buf_size.max(2)];
         let hr = unsafe {
-            (vt.get_string_info)(cb, c.as_ptr(), buf.as_mut_ptr() as *mut c_void, buf.len() as i32)
+            (vt.get_string_info)(
+                cb,
+                c.as_ptr(),
+                buf.as_mut_ptr() as *mut c_void,
+                buf.len() as i32,
+            )
         };
         let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
         buf.truncate(end);

@@ -60,8 +60,16 @@ fn read_deck(host: &SharedHost, side: &str) -> DeckNow {
         playing: num("play"),
         // Empty decks answer placeholder prose for get_title, so only ask
         // when loaded.
-        artist: if loaded { host.get_string_info(&q("get_artist")).unwrap_or_default() } else { String::new() },
-        title: if loaded { host.get_string_info(&q("get_title")).unwrap_or_default() } else { String::new() },
+        artist: if loaded {
+            host.get_string_info(&q("get_artist")).unwrap_or_default()
+        } else {
+            String::new()
+        },
+        title: if loaded {
+            host.get_string_info(&q("get_title")).unwrap_or_default()
+        } else {
+            String::new()
+        },
     }
 }
 
@@ -77,15 +85,18 @@ impl Drop for Companion {
 
 impl VdjPlugin for Companion {
     fn new() -> Self {
-        Companion { stop: Arc::new(AtomicBool::new(false)) }
+        Companion {
+            stop: Arc::new(AtomicBool::new(false)),
+        }
     }
 
     fn info(&self) -> PluginInfo {
         PluginInfo {
             name: "Rust Companion".into(),
             author: "vdj-plugin".into(),
-            description: "Floating now-playing window for both decks; toggle with `toggle '$nowplaying'`"
-                .into(),
+            description:
+                "Floating now-playing window for both decks; toggle with `toggle '$nowplaying'`"
+                    .into(),
             version: env!("CARGO_PKG_VERSION").into(),
             flags: 0,
         }
@@ -111,7 +122,10 @@ fn poll_loop(host: SharedHost, stop: Arc<AtomicBool>) {
     while !stop.load(Ordering::Relaxed) {
         if !announced {
             if host.get_info("get_version").map(|_| true).unwrap_or(false)
-                || host.get_string_info("get_version").map(|_| true).unwrap_or(false)
+                || host
+                    .get_string_info("get_version")
+                    .map(|_| true)
+                    .unwrap_or(false)
             {
                 // Pop up on load, and make the state button-visible.
                 let _ = host.send_command("set '$nowplaying' 1");
