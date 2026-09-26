@@ -61,14 +61,15 @@ Two host behaviors worth knowing, observed during the live run:
   `DllGetClassObject` runs on first `effect_select`, and the host instantiated
   the plugin twice. The plugin's catalog identity is the **bundle filename**,
   not the declared `PluginName`.
-- **The first launch after installing a new bundle binary wedges the plugin
-  layer.** Observed twice, once per freshly built bundle: VirtualDJ starts
-  and runs normally but with the plugin layer inert — no Network Control HTTP
-  listener, no plugin loads. A plain second relaunch (bundle still installed)
-  comes up clean in seconds; nothing needs to be removed. Cause unconfirmed
-  (first-seen-binary system assessment fits the shape). Practical rule:
-  install, restart VirtualDJ **twice**, then verify the HTTP interface
-  answers.
+- **An occasional inert first launch.** Twice on 2026-09-22, the first
+  launch after installing a freshly built bundle ran VirtualDJ normally but
+  with the plugin layer inert — no Network Control HTTP listener, no plugin
+  loads — and a plain relaunch came up clean. On 2026-09-26 the same test
+  (new binary installed over an old one, quit, launch once) loaded the
+  plugin first time, so this is not a rule about new binaries; both earlier
+  cases were also the first install of that bundle *name*, which may be the
+  real trigger. Practical rule: install, launch once, verify the HTTP
+  interface answers, and relaunch only if it does not.
 
 ## MVP scope
 

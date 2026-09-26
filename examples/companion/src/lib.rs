@@ -24,9 +24,10 @@
 //!   with its close button writes the variable back to 0 so button LEDs stay
 //!   truthful.
 //!
-//! Install: `./package.sh companion --install`, then restart VirtualDJ twice
-//! (first launch of a new bundle binary starts with the plugin layer inert —
-//! see README). Remove by deleting
+//! Install: `./package.sh companion --install`, then restart VirtualDJ. If
+//! the plugin layer comes up inert (no window, no HTTP interface), relaunch
+//! once more — seen on a bundle's first-ever install, see README. Remove by
+//! deleting
 //! `~/Library/Application Support/VirtualDJ/PluginsMacArm/AutoStart/RustCompanion.bundle`.
 
 mod window;
