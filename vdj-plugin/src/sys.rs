@@ -4,7 +4,8 @@
 //! Everything here is byte-layout-critical. The shapes are verified against the
 //! real headers by the C++ reference harness in `tests/layout.rs`, and the
 //! documented loading path itself is verified live in
-//! `docs/Plugin SDK.md` §"Loading" (VirtualDJ 2026, macOS arm64).
+//! [Plugin SDK.md](https://github.com/monomadic/virtualdj-api-reference/blob/master/docs/Plugin%20SDK.md)
+//! §"Loading" (VirtualDJ 2026, macOS arm64).
 
 use std::ffi::{c_char, c_void};
 

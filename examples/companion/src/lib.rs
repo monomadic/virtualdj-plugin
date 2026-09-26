@@ -8,8 +8,10 @@
 //! - `OnLoad` grabs a [`SharedHost`] and spawns a poll thread — host queries
 //!   from a non-main thread are the live-tested pattern.
 //! - The poll thread reads both decks (artist, title, loaded, play) ~3x/sec
-//!   and marshals a snapshot to the main thread, where a floating `NSWindow`
-//!   with plain AppKit labels shows it.
+//!   and marshals a snapshot to the main thread, where an `NSWindow` with
+//!   plain AppKit labels shows it. The window is a child of VirtualDJ's main
+//!   window and hides when VirtualDJ is not active, so it never floats over
+//!   other apps.
 //! - Visibility is driven by the VDJScript variable `$nowplaying`, so any
 //!   custom button or pad can toggle the window:
 //!
@@ -75,11 +77,17 @@ fn read_deck(host: &SharedHost, side: &str) -> DeckNow {
 
 struct Companion {
     stop: Arc<AtomicBool>,
+    poll_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Drop for Companion {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        // Join so the poll thread can't outlive the instance and call back
+        // into a `cb` the host may already be about to free.
+        if let Some(t) = self.poll_thread.take() {
+            let _ = t.join();
+        }
     }
 }
 
@@ -87,6 +95,7 @@ impl VdjPlugin for Companion {
     fn new() -> Self {
         Companion {
             stop: Arc::new(AtomicBool::new(false)),
+            poll_thread: None,
         }
     }
 
@@ -107,7 +116,7 @@ impl VdjPlugin for Companion {
         let stop = self.stop.clone();
         // OnLoad fires early in startup; everything below waits for the host
         // to become answerable, off the loader's thread.
-        std::thread::Builder::new()
+        self.poll_thread = std::thread::Builder::new()
             .name("rust-companion-poll".into())
             .spawn(move || poll_loop(shared, stop))
             .ok();
@@ -142,7 +151,7 @@ fn poll_loop(host: SharedHost, stop: Arc<AtomicBool>) {
         };
         // Sent every tick (not only on change): the window also has to notice
         // state the snapshot can't carry, like the user closing it.
-        window::apply(snap, host);
+        window::apply(snap, host.clone());
         std::thread::sleep(Duration::from_millis(300));
     }
 }

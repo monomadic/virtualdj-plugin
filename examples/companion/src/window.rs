@@ -12,7 +12,8 @@ use dispatch2::DispatchQueue;
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSBackingStoreType, NSColor, NSFont, NSTextAlignment, NSTextField, NSWindow, NSWindowStyleMask,
+    NSApplication, NSBackingStoreType, NSColor, NSFont, NSTextAlignment, NSTextField, NSWindow,
+    NSWindowOrderingMode, NSWindowStyleMask,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use vdj_plugin::SharedHost;
@@ -46,7 +47,7 @@ pub fn apply(snap: Snapshot, host: SharedHost) {
         UI.with(|cell| {
             let mut ui = cell.borrow_mut();
             let ui = ui.get_or_insert_with(|| build(mtm));
-            render(ui, &snap, &host);
+            render(mtm, ui, &snap, &host);
         });
     });
 }
@@ -89,8 +90,11 @@ fn build(mtm: MainThreadMarker) -> Ui {
         // We hold the only strong reference; the close button must not
         // dealloc the window out from under it.
         window.setReleasedWhenClosed(false);
-        window.setLevel(3); // NSFloatingWindowLevel: stay above the VirtualDJ window
+        // Normal level: the child-window relationship keeps us above
+        // VirtualDJ's window, and nothing else.
+        window.setLevel(0);
     }
+    window.setHidesOnDeactivate(true);
     window.setTitle(&NSString::from_str("Now Playing"));
 
     let header = |y: f64| NSRect::new(NSPoint::new(18.0, y), NSSize::new(120.0, 16.0));
@@ -149,22 +153,64 @@ fn render_row(row: &Row, deck: &DeckNow) {
     row.badge.setHidden(!deck.playing);
 }
 
-fn render(ui: &mut Ui, snap: &Snapshot, host: &SharedHost) {
+/// VirtualDJ's own main window, once it exists (it does not during `OnLoad`).
+/// Falls back to the largest visible window that is not ours.
+fn host_window(main_thread: MainThreadMarker, ours: &NSWindow) -> Option<Retained<NSWindow>> {
+    let app = NSApplication::sharedApplication(main_thread);
+    if let Some(main) = app.mainWindow() {
+        if &*main != ours {
+            return Some(main);
+        }
+    }
+    app.windows()
+        .iter()
+        .filter(|w| &**w != ours && w.isVisible())
+        .max_by(|a, b| {
+            let area = |w: &NSWindow| w.frame().size.width * w.frame().size.height;
+            area(a).total_cmp(&area(b))
+        })
+}
+
+/// Show the window as a child of VirtualDJ's main window: it then rides
+/// above that window only, moves with it, and (with `hidesOnDeactivate`)
+/// disappears whenever VirtualDJ is not the active app.
+fn show_attached(main_thread: MainThreadMarker, window: &NSWindow) {
+    if window.parentWindow().is_none() {
+        if let Some(host) = host_window(main_thread, window) {
+            unsafe { host.addChildWindow_ordered(window, NSWindowOrderingMode::Above) };
+        }
+    }
+    window.orderFront(None);
+}
+
+/// Detach from the parent before hiding, so the parent does not keep
+/// ordering us back in.
+fn hide_detached(window: &NSWindow) {
+    if let Some(parent) = window.parentWindow() {
+        parent.removeChildWindow(window);
+    }
+    window.orderOut(None);
+}
+
+fn render(mtm: MainThreadMarker, ui: &mut Ui, snap: &Snapshot, host: &SharedHost) {
     render_row(&ui.left, &snap.left);
     render_row(&ui.right, &snap.right);
 
+    // While VirtualDJ is inactive the window is hidden by AppKit
+    // (`hidesOnDeactivate`), so `isVisible` says nothing about the user's
+    // intent; leave the state alone until the app is active again.
+    if !NSApplication::sharedApplication(mtm).isActive() {
+        return;
+    }
     let actually_visible = ui.window.isVisible();
     if ui.ordered_visible && snap.visible && !actually_visible {
-        // We showed it, the variable still says visible, but the window is
-        // gone: the user clicked the close button. Write the state back so
-        // `toggle '$nowplaying'` buttons (and their LEDs) stay truthful.
         let _ = host.send_command("set '$nowplaying' 0");
         ui.ordered_visible = false;
     } else if snap.visible && !actually_visible {
-        ui.window.orderFront(None);
+        show_attached(mtm, &ui.window);
         ui.ordered_visible = true;
     } else if !snap.visible && actually_visible {
-        ui.window.orderOut(None);
+        hide_detached(&ui.window);
         ui.ordered_visible = false;
     } else {
         ui.ordered_visible = actually_visible;

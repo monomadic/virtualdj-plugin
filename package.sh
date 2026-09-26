@@ -1,10 +1,13 @@
 #!/bin/zsh
 # Package a Rust plugin crate as a VirtualDJ .bundle (and optionally install it).
 #
-#   rust/package.sh tremolo              # build rust/bundle/RustTremolo.bundle
-#   rust/package.sh tremolo --install    # …and copy it into VirtualDJ's plugin folder
+#   package.sh tremolo              # build bundle/RustTremolo.bundle
+#   package.sh tremolo --install    # …and copy it into VirtualDJ's plugin folder
+#   ARCH=x86_64 package.sh tremolo  # cross-build for Intel (needs `rustup
+#                                    # target add x86_64-apple-darwin`)
 #
-# Mirrors the proven recipe in tools/plugin/build.sh: a true MH_BUNDLE image
+# Mirrors the proven recipe from the virtualdj-api-reference repo
+# (https://github.com/monomadic/virtualdj-api-reference): a true MH_BUNDLE image
 # (clang -bundle over the staticlib — the exact load format the C++ instrument
 # verified loadable), an ad-hoc code signature (sufficient because VirtualDJ
 # ships com.apple.security.cs.disable-library-validation), and a
@@ -45,7 +48,17 @@ SUBDIR="${VDJ_PLUGIN_SUBDIR-$SUBDIR_DEFAULT}"
 BUNDLE="$HERE/bundle/$NAME.bundle"
 PLUGIN_DIR="$HOME/Library/Application Support/VirtualDJ/PluginsMacArm"
 
-cargo build --release --manifest-path "$HERE/Cargo.toml" -p "$PKG"
+ARCH="${ARCH:-arm64}"
+case "$ARCH" in
+    arm64)   RUST_TARGET=aarch64-apple-darwin ;;
+    x86_64)  RUST_TARGET=x86_64-apple-darwin ;;
+    *)
+        print -u2 "error: unsupported ARCH '$ARCH' (want arm64 or x86_64)"
+        exit 2
+        ;;
+esac
+
+cargo build --release --target "$RUST_TARGET" --manifest-path "$HERE/Cargo.toml" -p "$PKG"
 
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS"
@@ -86,12 +99,12 @@ PLIST
 # No -mmacosx-version-min: the staticlib's objects carry the Rust toolchain's
 # own deployment target, and forcing an older one only produces ld warnings.
 clang \
-    -arch arm64 \
+    -arch "$ARCH" \
     -bundle \
     "${EXTRA_FRAMEWORKS[@]:-}" \
     -u _DllGetClassObject \
     -Wl,-exported_symbol,_DllGetClassObject \
-    "$HERE/target/release/$LIB" \
+    "$HERE/target/$RUST_TARGET/release/$LIB" \
     -o "$BUNDLE/Contents/MacOS/$NAME"
 
 codesign --force --sign - --timestamp=none "$BUNDLE"

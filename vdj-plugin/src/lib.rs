@@ -25,7 +25,7 @@
 //! ```
 //!
 //! The generated `DllGetClassObject` follows VirtualDJ's live-verified loading
-//! contract (see the reference repo's `docs/Plugin SDK.md`): the host probes
+//! contract (see the reference repo's [Plugin SDK.md](https://github.com/monomadic/virtualdj-api-reference/blob/master/docs/Plugin%20SDK.md)): the host probes
 //! one export with a sequence of interface IDs and the plugin declares its
 //! type by which IID it accepts.
 //!

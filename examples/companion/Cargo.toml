@@ -12,6 +12,8 @@ vdj-plugin = { path = "../../vdj-plugin" }
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = [
     "std",
+    "NSArray",
+    "NSEnumerator",
     "NSGeometry",
     "NSString",
 ] }

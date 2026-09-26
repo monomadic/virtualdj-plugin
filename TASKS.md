@@ -5,7 +5,7 @@ priority within each section. Check items off as they land.
 
 ## Fixes
 
-- [ ] **Make the layout-harness skip loud and opt-in.**
+- [x] **Make the layout-harness skip loud and opt-in.**
   `vdj-plugin/tests/layout.rs` prints `SKIP` to stderr when the Atomix SDK
   headers are absent, which `cargo test` swallows, so the test reports green on
   any machine without `vendor/` or `VDJ_SDK`. The README's claim that
@@ -14,7 +14,7 @@ priority within each section. Check items off as they land.
   `VDJ_SDK_OPTIONAL=1`, or a default-on `sdk-harness` cargo feature that CI
   disables).
 
-- [ ] **Replace stale monorepo paths in comments.** These date from when the
+- [x] **Replace stale monorepo paths in comments.** These date from when the
   crate lived inside the reference repo:
   - `package.sh` lines 4-5 (`rust/package.sh`, `rust/bundle/`) and line 7
     (`tools/plugin/build.sh`).
@@ -25,7 +25,7 @@ priority within each section. Check items off as they land.
     `src/wrapper.rs`.
   Point them at the `virtualdj-api-reference` URLs the README already uses.
 
-- [ ] **Invalidate `SharedHost` when its instance is dropped.**
+- [x] **Invalidate `SharedHost` when its instance is dropped.**
   `SharedHost` (`vdj-plugin/src/host.rs`) copies a raw `IVdjCallbacks8`
   pointer with no lifetime tie to the plugin instance. The companion example's
   `Drop` only sets a stop flag and never joins its poll thread, so after plugin
@@ -34,7 +34,7 @@ priority within each section. Check items off as they land.
   in `Drop`, so late calls return `E_FAIL` instead of dereferencing garbage.
   Then have the companion example join its thread on drop.
 
-- [ ] **Parameterize the target arch in `package.sh`.** It hardcodes
+- [x] **Parameterize the target arch in `package.sh`.** It hardcodes
   `-arch arm64`. The README says the x86_64 macOS layouts should hold but are
   unverified; an `ARCH` variable (or a universal build once both Rust targets
   are installed) makes that cheap to check.

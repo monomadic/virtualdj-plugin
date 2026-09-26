@@ -2,9 +2,12 @@
 //! headers and diff every offset, size, and vtable slot index against this
 //! crate's `#[repr(C)]` definitions.
 //!
-//! Needs the SDK headers (not vendored — no license grant; see the repo's
-//! `docs/Plugin SDK.md`). Looked up via `VDJ_SDK=<dir>` or by searching
-//! `../vendor/` for `vdjDsp8.h`. Without them the test skips, loudly.
+//! Needs the SDK headers (not vendored — no license grant; see the reference
+//! repo's [Plugin SDK.md](https://github.com/monomadic/virtualdj-api-reference/blob/master/docs/Plugin%20SDK.md)).
+//! Looked up via `VDJ_SDK=<dir>` or by searching
+//! `../vendor/` for `vdjDsp8.h`. Without them, the test fails unless
+//! `VDJ_SDK_OPTIONAL=1` is set, in which case it skips loudly (to stdout, so
+//! `cargo test` can't swallow it).
 
 use std::collections::HashMap;
 use std::mem::{offset_of, size_of};
@@ -44,7 +47,12 @@ fn reference_values() -> Option<HashMap<String, i64>> {
     let sdk = match find_sdk() {
         Some(s) => s,
         None => {
-            eprintln!(
+            assert!(
+                std::env::var("VDJ_SDK_OPTIONAL").as_deref() == Ok("1"),
+                "Atomix SDK headers not found (set VDJ_SDK or put them under vendor/); \
+                 set VDJ_SDK_OPTIONAL=1 to allow skipping the C++ cross-check"
+            );
+            println!(
                 "SKIP: Atomix SDK headers not found (set VDJ_SDK or put them under vendor/); \
                  the C++ cross-check did not run"
             );

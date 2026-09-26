@@ -39,12 +39,20 @@ end (`~/…/VirtualDJ/rust-tremolo.log` is the capture):
 - The **companion-window architecture** (2026-09-22, same build): the
   [companion example](examples/companion/) is a *basic* plugin in `AutoStart/`
   — the verified headless lifecycle — that spawns its own poll thread with a
-  `SharedHost`, creates a native floating `NSWindow` on the main thread, and
+  `SharedHost`, creates a native `NSWindow` on the main thread, and
   binds its visibility to the VDJScript variable `$nowplaying`. Live-verified:
   the window pops up when VirtualDJ starts, shows both decks' artist/title
   with a PLAYING badge, and `toggle '$nowplaying'` — the action any custom
   button or pad can carry — hides and re-shows it, with the close button
   writing the variable back so button LEDs stay truthful.
+
+  The window is attached as a **child of VirtualDJ's main window**
+  (`addChildWindow:ordered:` above it, at normal window level) with
+  `hidesOnDeactivate` set, so it rides above VirtualDJ only, moves with it,
+  and disappears whenever VirtualDJ is not the active app. A floating window
+  level would instead sit above every app on the Mac. Because AppKit hides
+  the window while the app is inactive, the example only reconciles
+  `isVisible` with its `$nowplaying` variable when `NSApplication.isActive`.
 
 Two host behaviors worth knowing, observed during the live run:
 
@@ -77,7 +85,9 @@ Two host behaviors worth knowing, observed during the live run:
 | Bundle packaging + install | [package.sh](package.sh) |
 
 macOS only (arm64 exercised; the layouts are Itanium-ABI shapes that hold for
-x86_64 macOS too, unverified). Windows would need the MSVC vtable variants.
+x86_64 macOS too, unverified — `ARCH=x86_64 ./package.sh <example>` builds it,
+given `rustup target add x86_64-apple-darwin`). Windows would need the MSVC
+vtable variants.
 
 ## Build and test
 
@@ -100,7 +110,9 @@ The harness needs the Atomix SDK headers, which are **not** in this repo (no
 license grant — see [Plugin SDK.md](https://github.com/monomadic/virtualdj-api-reference/blob/master/docs/Plugin%20SDK.md) §Provenance). Put
 them under `vendor/` (download from the official
 [PluginSDK8 page](https://www.virtualdj.com/wiki/PluginSDK8.html)) or set
-`VDJ_SDK=<dir>`; without them the harness skips and says so.
+`VDJ_SDK=<dir>`; without them `cargo test` fails by default. Set
+`VDJ_SDK_OPTIONAL=1` to allow the harness to skip instead (it still prints
+`SKIP: ...` to stdout so it can't go unnoticed).
 
 ## Why the layout layer looks the way it does
 

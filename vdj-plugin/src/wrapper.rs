@@ -27,6 +27,8 @@ use crate::{DspContext, DspPlugin, PluginInfo, UserInterface, VdjPlugin};
 use std::ffi::{c_char, c_void, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
+use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Vtable slot tables
@@ -84,7 +86,7 @@ pub struct NoFields;
 
 /// `IVdjPluginDsp8`'s host-written members, in declaration order after `cb`.
 ///
-/// Caveat from live testing (`docs/VDJScript Local Test Tracker.md`,
+/// Caveat from live testing ([VDJScript Local Test Tracker.md](https://github.com/monomadic/virtualdj-api-reference/blob/master/docs/VDJScript%20Local%20Test%20Tracker.md),
 /// 2026-08-15): `song_bpm` is *samples between beats*, and reads as a 120 BPM
 /// default (22050 @ 44.1 kHz) while the deck is idle — it is not always the
 /// loaded track's tempo.
@@ -117,6 +119,16 @@ pub struct Instance<V, X, P> {
     info: Option<InfoStrings>,
     ui: Option<UiBuffers>,
     plugin: P,
+    /// Mirrors `cb`; shared with every [`crate::host::SharedHost`] handed out
+    /// over this instance's life, and nulled in `Drop` so late calls fail
+    /// instead of dereferencing a freed `cb`.
+    shared_cb: Arc<AtomicPtr<IVdjCallbacks8>>,
+}
+
+impl<V, X, P> Drop for Instance<V, X, P> {
+    fn drop(&mut self) {
+        self.shared_cb.store(ptr::null_mut(), Ordering::Release);
+    }
 }
 
 pub type BasicInstance<P> = Instance<BasicSlots, NoFields, P>;
@@ -174,7 +186,7 @@ unsafe fn inst<'a, V, X, P>(this: *mut c_void) -> &'a mut Instance<V, X, P> {
 
 unsafe extern "C" fn on_load_shim<V, X, P: VdjPlugin>(this: *mut c_void) -> HRESULT {
     let i = inst::<V, X, P>(this);
-    let host = Host::from_cb(i.cb);
+    let host = Host::from_cb(i.cb, i.shared_cb.clone());
     match catch_unwind(AssertUnwindSafe(|| i.plugin.on_load(&host))) {
         Ok(Ok(())) => S_OK,
         Ok(Err(e)) => e.0,
@@ -232,7 +244,7 @@ unsafe extern "C" fn dtor_deleting_shim<V, X, P>(this: *mut c_void) -> *mut c_vo
 
 unsafe extern "C" fn on_parameter_shim<V, X, P: VdjPlugin>(this: *mut c_void, id: i32) -> HRESULT {
     let i = inst::<V, X, P>(this);
-    let host = Host::from_cb(i.cb);
+    let host = Host::from_cb(i.cb, i.shared_cb.clone());
     match catch_unwind(AssertUnwindSafe(|| i.plugin.on_parameter(&host, id))) {
         Ok(Ok(())) => S_OK,
         Ok(Err(e)) => e.0,
@@ -250,7 +262,7 @@ unsafe extern "C" fn on_get_parameter_string_shim<V, X, P: VdjPlugin>(
         return E_INVALIDARG;
     }
     let i = inst::<V, X, P>(this);
-    let host = Host::from_cb(i.cb);
+    let host = Host::from_cb(i.cb, i.shared_cb.clone());
     let text = match catch_unwind(AssertUnwindSafe(|| i.plugin.parameter_string(&host, id))) {
         Ok(t) => t,
         Err(_) => return E_FAIL,
@@ -276,7 +288,7 @@ unsafe extern "C" fn on_get_user_interface_shim<V, X, P: VdjPlugin>(
         return E_INVALIDARG;
     }
     let i = inst::<V, X, P>(this);
-    let host = Host::from_cb(i.cb);
+    let host = Host::from_cb(i.cb, i.shared_cb.clone());
     let built = match catch_unwind(AssertUnwindSafe(|| i.plugin.user_interface(&host))) {
         Ok(b) => b,
         Err(_) => return E_FAIL,
@@ -302,7 +314,7 @@ unsafe extern "C" fn on_get_user_interface_shim<V, X, P: VdjPlugin>(
 
 unsafe extern "C" fn on_start_shim<P: DspPlugin>(this: *mut c_void) -> HRESULT {
     let i = inst::<DspSlots, DspFields, P>(this);
-    let host = Host::from_cb(i.cb);
+    let host = Host::from_cb(i.cb, i.shared_cb.clone());
     match catch_unwind(AssertUnwindSafe(|| i.plugin.on_start(&host))) {
         Ok(Ok(())) => S_OK,
         Ok(Err(e)) => e.0,
@@ -312,7 +324,7 @@ unsafe extern "C" fn on_start_shim<P: DspPlugin>(this: *mut c_void) -> HRESULT {
 
 unsafe extern "C" fn on_stop_shim<P: DspPlugin>(this: *mut c_void) -> HRESULT {
     let i = inst::<DspSlots, DspFields, P>(this);
-    let host = Host::from_cb(i.cb);
+    let host = Host::from_cb(i.cb, i.shared_cb.clone());
     match catch_unwind(AssertUnwindSafe(|| i.plugin.on_stop(&host))) {
         Ok(Ok(())) => S_OK,
         Ok(Err(e)) => e.0,
@@ -331,7 +343,7 @@ unsafe extern "C" fn on_process_samples_shim<P: DspPlugin>(
     }
     // Per the header: samples are interleaved stereo, buffer[0..2*nb].
     let samples = std::slice::from_raw_parts_mut(buffer, nb as usize * 2);
-    let host = Host::from_cb(i.cb);
+    let host = Host::from_cb(i.cb, i.shared_cb.clone());
     let ctx = DspContext {
         host: &host,
         sample_rate: i.host_fields.sample_rate,
@@ -388,6 +400,7 @@ unsafe fn create_instance<V, X: Default, P: VdjPlugin>(slots: V) -> *mut c_void 
         info: None,
         ui: None,
         plugin: P::new(),
+        shared_cb: Arc::new(AtomicPtr::new(ptr::null_mut())),
     });
     let raw = Box::into_raw(boxed);
     (*raw).vptr = ptr::addr_of!((*raw).vtbl.slots) as *const c_void;

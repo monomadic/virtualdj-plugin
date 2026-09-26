@@ -3,13 +3,15 @@
 use crate::sys::*;
 use std::ffi::{c_void, CString};
 use std::fmt;
+use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::Arc;
 
 /// A failed host call, carrying the raw `HRESULT`.
 ///
 /// Any non-negative `HRESULT` (`S_OK`, `S_FALSE`) is success; anything negative
 /// is an error. VirtualDJ writes `0.0` into `GetInfo`'s out-parameter even on
 /// failure, so the `HRESULT` — not the value — is always the authoritative
-/// answer (see `docs/Plugin SDK.md`).
+/// answer (see [Plugin SDK.md](https://github.com/monomadic/virtualdj-api-reference/blob/master/docs/Plugin%20SDK.md)).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct VdjError(pub HRESULT);
 
@@ -64,14 +66,23 @@ const STRING_INFO_BUF: usize = 8192;
 /// companion process launcher), take [`Host::shared`] — with its caveats.
 pub struct Host {
     cb: *mut IVdjCallbacks8,
+    /// Mirrors `cb`, shared with any [`SharedHost`]s taken from this instance
+    /// so the instance's `Drop` can invalidate them (see [`SharedHost`]).
+    shared: Arc<AtomicPtr<IVdjCallbacks8>>,
 }
 
 impl Host {
     /// # Safety
     /// `cb` must be the host-written callback pointer from a live plugin
-    /// instance (or null, which makes every call return `E_FAIL`).
-    pub(crate) unsafe fn from_cb(cb: *mut IVdjCallbacks8) -> Host {
-        Host { cb }
+    /// instance (or null, which makes every call return `E_FAIL`). `shared`
+    /// must be the same instance's shared cell, kept in sync so its `Drop`
+    /// can invalidate any [`SharedHost`]s derived from this handle.
+    pub(crate) unsafe fn from_cb(
+        cb: *mut IVdjCallbacks8,
+        shared: Arc<AtomicPtr<IVdjCallbacks8>>,
+    ) -> Host {
+        shared.store(cb, Ordering::Release);
+        Host { cb, shared }
     }
 
     fn vtbl(&self) -> Result<(*mut IVdjCallbacks8, &IVdjCallbacks8Vtbl)> {
@@ -140,8 +151,15 @@ impl Host {
     }
 
     /// A `Send + Sync` copy of this handle for use off the callback thread.
+    ///
+    /// The clone stays valid only for the plugin instance's lifetime: once the
+    /// instance is dropped, its `Drop` impl invalidates every outstanding
+    /// [`SharedHost`], so late calls return `E_FAIL` instead of dereferencing
+    /// a freed host object.
     pub fn shared(&self) -> SharedHost {
-        SharedHost { cb: self.cb }
+        SharedHost {
+            cb: self.shared.clone(),
+        }
     }
 }
 
@@ -149,24 +167,27 @@ impl Host {
 /// VirtualDJ's own Network Control plugin embodies).
 ///
 /// **Evidence status:** the SDK documents nothing about callback thread-safety.
-/// One recorded session (`docs/VDJScript Local Test Tracker.md`, 2026-08-15)
+/// One recorded session ([VDJScript Local Test Tracker.md](https://github.com/monomadic/virtualdj-api-reference/blob/master/docs/VDJScript%20Local%20Test%20Tracker.md), 2026-08-15)
 /// ran 55 `GetInfo`/`GetStringInfo` probes from a detached non-main thread with
 /// no misbehavior. That is evidence, not a guarantee; keep off-thread use to
 /// query calls where possible and route `send_command` through short strings.
-#[derive(Clone, Copy)]
+///
+/// Backed by an `Arc<AtomicPtr<IVdjCallbacks8>>` shared with the owning
+/// plugin instance rather than a raw copy of the pointer: the instance nulls
+/// it on `Drop`, so a `SharedHost` outliving its instance (e.g. a poll thread
+/// that hasn't noticed a stop flag yet) fails safely instead of calling
+/// through a freed `IVdjCallbacks8`.
+#[derive(Clone)]
 pub struct SharedHost {
-    cb: *mut IVdjCallbacks8,
+    cb: Arc<AtomicPtr<IVdjCallbacks8>>,
 }
-
-// SAFETY: forwarding raw calls into the host, which one recorded session showed
-// tolerating cross-thread callers (see type docs). The pointer itself is set
-// once by the host before OnLoad and never changes for the instance's life.
-unsafe impl Send for SharedHost {}
-unsafe impl Sync for SharedHost {}
 
 impl SharedHost {
     fn as_host(&self) -> Host {
-        Host { cb: self.cb }
+        Host {
+            cb: self.cb.load(Ordering::Acquire),
+            shared: self.cb.clone(),
+        }
     }
 
     pub fn send_command(&self, command: &str) -> Result<()> {

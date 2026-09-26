@@ -6,7 +6,7 @@
 //! small log proving the callback ABI round-trips (`get_version` through both
 //! typed query channels).
 //!
-//! Install: `rust/package.sh tremolo --install`, then restart VirtualDJ and
+//! Install: `package.sh tremolo --install`, then restart VirtualDJ and
 //! select "Rust Tremolo" in a deck's effects list.
 
 use std::f64::consts::TAU;
