@@ -249,9 +249,11 @@ unsafe extern "C" fn online_search<P: OnlineSourcePlugin>(
     if query.is_null() || list.is_null() {
         return E_INVALIDARG;
     }
-    let i = inst::<OnlineSlots, OnlineFields, P>(this);
+    // Borrow only the shared plugin field: cancellation can run concurrently.
+    let plugin =
+        &*std::ptr::addr_of!((*(this as *const Instance<OnlineSlots, OnlineFields, P>)).plugin);
     let q = CStr::from_ptr(query).to_string_lossy();
-    match catch_unwind(AssertUnwindSafe(|| i.plugin.search(&q))) {
+    match catch_unwind(AssertUnwindSafe(|| plugin.search(&q))) {
         Ok(Ok(tracks)) => {
             for t in &tracks {
                 add_online_track(list, t);
@@ -271,9 +273,11 @@ unsafe extern "C" fn online_stream<P: OnlineSourcePlugin>(
     if id.is_null() || url.is_null() || err.is_null() {
         return E_INVALIDARG;
     }
-    let i = inst::<OnlineSlots, OnlineFields, P>(this);
+    // Borrow only the shared plugin field: cancellation can run concurrently.
+    let plugin =
+        &*std::ptr::addr_of!((*(this as *const Instance<OnlineSlots, OnlineFields, P>)).plugin);
     let id = CStr::from_ptr(id).to_string_lossy();
-    match catch_unwind(AssertUnwindSafe(|| i.plugin.stream_url(&id))) {
+    match catch_unwind(AssertUnwindSafe(|| plugin.stream_url(&id))) {
         Ok(Ok(path)) => {
             ((*(*url).vtbl).assign)(url, cstring_lossy(&path).as_ptr());
             S_OK
@@ -282,6 +286,16 @@ unsafe extern "C" fn online_stream<P: OnlineSourcePlugin>(
             ((*(*err).vtbl).assign)(err, cstring_lossy(&msg).as_ptr());
             E_FAIL
         }
+        Err(_) => E_FAIL,
+    }
+}
+
+unsafe extern "C" fn online_cancel<P: OnlineSourcePlugin>(this: *mut c_void) -> HRESULT {
+    let plugin =
+        &*std::ptr::addr_of!((*(this as *const Instance<OnlineSlots, OnlineFields, P>)).plugin);
+    match catch_unwind(AssertUnwindSafe(|| plugin.search_cancel())) {
+        Ok(true) => S_OK,
+        Ok(false) => E_NOTIMPL,
         Err(_) => E_FAIL,
     }
 }
@@ -543,7 +557,7 @@ const fn online_slots<P: OnlineSourcePlugin>() -> OnlineSlots {
         on_logout: online_notimpl,
         on_oauth: online_oauth,
         on_search: online_search::<P>,
-        on_search_cancel: online_notimpl,
+        on_search_cancel: online_cancel::<P>,
         get_stream_url: online_stream::<P>,
         get_folder_list: online_folder_list,
         get_folder: online_folder,
@@ -659,6 +673,72 @@ mod tests {
         }
         fn info(&self) -> PluginInfo {
             PluginInfo::default()
+        }
+    }
+
+    #[test]
+    fn online_cancel_interrupts_concurrent_search_through_vtable() {
+        use std::sync::{Condvar, Mutex};
+        use std::time::Duration;
+        #[derive(Default)]
+        struct Blocking {
+            state: Arc<(Mutex<(bool, bool)>, Condvar)>,
+        }
+        impl VdjPlugin for Blocking {
+            fn new() -> Self {
+                Self::default()
+            }
+            fn info(&self) -> PluginInfo {
+                PluginInfo::default()
+            }
+        }
+        impl OnlineSourcePlugin for Blocking {
+            fn search(&self, _: &str) -> Result<Vec<OnlineTrack>, String> {
+                let (lock, changed) = &*self.state;
+                let mut state = lock.lock().unwrap();
+                state.0 = true;
+                changed.notify_all();
+                let (state, _) = changed
+                    .wait_timeout_while(state, Duration::from_secs(2), |s| !s.1)
+                    .unwrap();
+                assert!(state.1, "cancellation did not reach running search");
+                Err("cancelled".into())
+            }
+            fn stream_url(&self, _: &str) -> Result<String, String> {
+                unreachable!()
+            }
+            fn search_cancel(&self) -> bool {
+                let (lock, changed) = &*self.state;
+                lock.lock().unwrap().1 = true;
+                changed.notify_all();
+                true
+            }
+        }
+        unsafe {
+            let object =
+                create_instance::<OnlineSlots, OnlineFields, Blocking>(online_slots::<Blocking>());
+            let plugin = &*ptr::addr_of!((*(object as *const OnlineInstance<Blocking>)).plugin);
+            let state = plugin.state.clone();
+            let address = object as usize;
+            let worker = std::thread::spawn(move || {
+                let object = address as *mut c_void;
+                let slots = &**(object as *const *const OnlineSlots);
+                // A failed search must never call any list method.
+                let mut list = IVdjTracksList { vtbl: ptr::null() };
+                (slots.on_search)(object, c"fixture".as_ptr(), &mut list)
+            });
+            let (lock, changed) = &*state;
+            let started = lock.lock().unwrap();
+            let (started, _) = changed
+                .wait_timeout_while(started, Duration::from_secs(2), |s| !s.0)
+                .unwrap();
+            assert!(started.0);
+            drop(started);
+            let slots = &**(object as *const *const OnlineSlots);
+            assert_eq!((slots.on_search_cancel)(object), S_OK);
+            assert_eq!(worker.join().unwrap(), E_FAIL);
+            assert!(state.0.lock().unwrap().1);
+            (slots.base.release)(object);
         }
     }
 

@@ -70,9 +70,15 @@ pub struct OnlineTrack {
 
 /// Synchronous OnlineSource callbacks. Search and load errors are passed
 /// through as `E_FAIL`; the load error text is shown by VirtualDJ.
-pub trait OnlineSourcePlugin: VdjPlugin {
-    fn search(&mut self, query: &str) -> std::result::Result<Vec<OnlineTrack>, String>;
-    fn stream_url(&mut self, id: &str) -> std::result::Result<String, String>;
+/// The host may call `search_cancel` concurrently with `search`. Implementations
+/// must use interior synchronization and the host must finish callbacks before Release.
+pub trait OnlineSourcePlugin: VdjPlugin + Sync {
+    fn search(&self, query: &str) -> std::result::Result<Vec<OnlineTrack>, String>;
+    fn stream_url(&self, id: &str) -> std::result::Result<String, String>;
+    /// Return false when cancellation is unsupported (`E_NOTIMPL`).
+    fn search_cancel(&self) -> bool {
+        false
+    }
 }
 
 /// What `OnGetPluginInfo` reports to VirtualDJ. The strings are copied into
