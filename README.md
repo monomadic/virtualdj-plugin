@@ -148,5 +148,7 @@ Facts this code is built on, each verified in the reference repo:
    (`docs/vdjscript-verbs.json` + plugin-channel HRESULT captures): per-verb
    methods choosing `GetInfo` vs `GetStringInfo` and surfacing `HRESULT`s as
    `Result` — the thing the C++ SDK never had.
-4. Video / online-source interfaces (the latter blocked on the second-loading-
-   path question in [Plugin SDK.md](https://github.com/monomadic/virtualdj-api-reference/blob/master/docs/Plugin%20SDK.md) §Loading).
+4. Video interfaces and live verification of the new OnlineSource path. The
+   OnlineSource ABI and its host calls are checked against the SDK headers and
+   driven by a C++ harness in `virtualdj-plugin-beatport`, but VirtualDJ has
+   not yet loaded that bundle in a live session.

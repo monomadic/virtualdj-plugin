@@ -51,6 +51,30 @@ mod export;
 
 pub use host::{Host, Result, SharedHost, VdjError};
 
+/// A browser row supplied by an OnlineSource plugin.
+#[derive(Clone, Debug, Default)]
+pub struct OnlineTrack {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub remix: String,
+    pub genre: String,
+    pub label: String,
+    pub cover_url: String,
+    pub local_path: String,
+    pub length_s: f32,
+    pub bpm: f32,
+    pub key: i32,
+    pub year: i32,
+}
+
+/// Synchronous OnlineSource callbacks. Search and load errors are passed
+/// through as `E_FAIL`; the load error text is shown by VirtualDJ.
+pub trait OnlineSourcePlugin: VdjPlugin {
+    fn search(&mut self, query: &str) -> std::result::Result<Vec<OnlineTrack>, String>;
+    fn stream_url(&mut self, id: &str) -> std::result::Result<String, String>;
+}
+
 /// What `OnGetPluginInfo` reports to VirtualDJ. The strings are copied into
 /// storage owned by the plugin instance, so they may be built dynamically.
 #[derive(Clone, Debug, Default)]

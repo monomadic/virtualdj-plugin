@@ -23,8 +23,10 @@
 
 use crate::host::Host;
 use crate::sys::*;
-use crate::{DspContext, DspPlugin, PluginInfo, UserInterface, VdjPlugin};
-use std::ffi::{c_char, c_void, CString};
+use crate::{
+    DspContext, DspPlugin, OnlineSourcePlugin, OnlineTrack, PluginInfo, UserInterface, VdjPlugin,
+};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 use std::sync::atomic::{AtomicPtr, Ordering};
@@ -66,6 +68,38 @@ pub struct DspSlots {
         unsafe extern "C" fn(this: *mut c_void, buffer: *mut f32, nb: i32) -> HRESULT,
 }
 
+#[repr(C)]
+pub struct OnlineSlots {
+    pub base: BasicSlots,
+    pub is_logged: unsafe extern "C" fn(*mut c_void) -> HRESULT,
+    pub on_login: unsafe extern "C" fn(*mut c_void) -> HRESULT,
+    pub on_logout: unsafe extern "C" fn(*mut c_void) -> HRESULT,
+    pub on_oauth: unsafe extern "C" fn(
+        *mut c_void,
+        *const c_char,
+        usize,
+        *const c_char,
+        *const c_char,
+        *const c_char,
+    ) -> HRESULT,
+    pub on_search: unsafe extern "C" fn(*mut c_void, *const c_char, *mut IVdjTracksList) -> HRESULT,
+    pub on_search_cancel: unsafe extern "C" fn(*mut c_void) -> HRESULT,
+    pub get_stream_url: unsafe extern "C" fn(
+        *mut c_void,
+        *const c_char,
+        *mut IVdjString,
+        *mut IVdjString,
+    ) -> HRESULT,
+    pub get_folder_list: unsafe extern "C" fn(*mut c_void, *mut c_void) -> HRESULT,
+    pub get_folder:
+        unsafe extern "C" fn(*mut c_void, *const c_char, *mut IVdjTracksList) -> HRESULT,
+    pub get_context_menu: unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void) -> HRESULT,
+    pub on_context_menu: unsafe extern "C" fn(*mut c_void, *const c_char, usize) -> HRESULT,
+    pub get_folder_context_menu:
+        unsafe extern "C" fn(*mut c_void, *const c_char, *mut c_void) -> HRESULT,
+    pub on_folder_context_menu: unsafe extern "C" fn(*mut c_void, *const c_char, usize) -> HRESULT,
+}
+
 /// A vtable as the ABI lays it out: preamble, then the slots. The object's
 /// vptr points at `.slots`, not at the struct start.
 #[repr(C)]
@@ -96,6 +130,12 @@ pub struct DspFields {
     pub sample_rate: i32,
     pub song_bpm: i32,
     pub song_pos_beats: f64,
+}
+
+#[repr(C)]
+#[derive(Default)]
+pub struct OnlineFields {
+    pub oauth: *mut c_void,
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +173,118 @@ impl<V, X, P> Drop for Instance<V, X, P> {
 
 pub type BasicInstance<P> = Instance<BasicSlots, NoFields, P>;
 pub type DspInstance<P> = Instance<DspSlots, DspFields, P>;
+pub type OnlineInstance<P> = Instance<OnlineSlots, OnlineFields, P>;
+
+unsafe extern "C" fn online_notimpl(_: *mut c_void) -> HRESULT {
+    E_NOTIMPL
+}
+unsafe extern "C" fn online_oauth(
+    _: *mut c_void,
+    _: *const c_char,
+    _: usize,
+    _: *const c_char,
+    _: *const c_char,
+    _: *const c_char,
+) -> HRESULT {
+    E_NOTIMPL
+}
+unsafe extern "C" fn online_folder_list(_: *mut c_void, _: *mut c_void) -> HRESULT {
+    E_NOTIMPL
+}
+unsafe extern "C" fn online_folder(
+    _: *mut c_void,
+    _: *const c_char,
+    _: *mut IVdjTracksList,
+) -> HRESULT {
+    E_NOTIMPL
+}
+unsafe extern "C" fn online_menu(_: *mut c_void, _: *const c_char, _: *mut c_void) -> HRESULT {
+    E_NOTIMPL
+}
+unsafe extern "C" fn online_menu_select(_: *mut c_void, _: *const c_char, _: usize) -> HRESULT {
+    E_NOTIMPL
+}
+
+unsafe fn add_online_track(list: *mut IVdjTracksList, t: &OnlineTrack) {
+    let fields = [
+        &t.id,
+        &t.title,
+        &t.artist,
+        &t.remix,
+        &t.genre,
+        &t.label,
+        &t.cover_url,
+        &t.local_path,
+    ];
+    let s: Vec<CString> = fields.iter().map(|v| cstring_lossy(v)).collect();
+    ((*(*list).vtbl).add)(
+        list,
+        s[0].as_ptr(),
+        s[1].as_ptr(),
+        s[2].as_ptr(),
+        s[3].as_ptr(),
+        s[4].as_ptr(),
+        s[5].as_ptr(),
+        ptr::null(),
+        s[6].as_ptr(),
+        if t.local_path.is_empty() {
+            ptr::null()
+        } else {
+            s[7].as_ptr()
+        },
+        t.length_s,
+        t.bpm,
+        t.key,
+        t.year,
+        false,
+        false,
+    );
+}
+
+unsafe extern "C" fn online_search<P: OnlineSourcePlugin>(
+    this: *mut c_void,
+    query: *const c_char,
+    list: *mut IVdjTracksList,
+) -> HRESULT {
+    if query.is_null() || list.is_null() {
+        return E_INVALIDARG;
+    }
+    let i = inst::<OnlineSlots, OnlineFields, P>(this);
+    let q = CStr::from_ptr(query).to_string_lossy();
+    match catch_unwind(AssertUnwindSafe(|| i.plugin.search(&q))) {
+        Ok(Ok(tracks)) => {
+            for t in &tracks {
+                add_online_track(list, t);
+            }
+            S_OK
+        }
+        _ => E_FAIL,
+    }
+}
+
+unsafe extern "C" fn online_stream<P: OnlineSourcePlugin>(
+    this: *mut c_void,
+    id: *const c_char,
+    url: *mut IVdjString,
+    err: *mut IVdjString,
+) -> HRESULT {
+    if id.is_null() || url.is_null() || err.is_null() {
+        return E_INVALIDARG;
+    }
+    let i = inst::<OnlineSlots, OnlineFields, P>(this);
+    let id = CStr::from_ptr(id).to_string_lossy();
+    match catch_unwind(AssertUnwindSafe(|| i.plugin.stream_url(&id))) {
+        Ok(Ok(path)) => {
+            ((*(*url).vtbl).assign)(url, cstring_lossy(&path).as_ptr());
+            S_OK
+        }
+        Ok(Err(msg)) => {
+            ((*(*err).vtbl).assign)(err, cstring_lossy(&msg).as_ptr());
+            E_FAIL
+        }
+        Err(_) => E_FAIL,
+    }
+}
 
 /// Owned backing storage for the pointers handed out in `OnGetPluginInfo`.
 /// Held for the instance's lifetime — the SDK never says when the host stops
@@ -383,6 +535,25 @@ const fn dsp_slots<P: DspPlugin>() -> DspSlots {
     }
 }
 
+const fn online_slots<P: OnlineSourcePlugin>() -> OnlineSlots {
+    OnlineSlots {
+        base: basic_slots_for::<OnlineSlots, OnlineFields, P>(),
+        is_logged: online_notimpl,
+        on_login: online_notimpl,
+        on_logout: online_notimpl,
+        on_oauth: online_oauth,
+        on_search: online_search::<P>,
+        on_search_cancel: online_notimpl,
+        get_stream_url: online_stream::<P>,
+        get_folder_list: online_folder_list,
+        get_folder: online_folder,
+        get_context_menu: online_menu,
+        on_context_menu: online_menu_select,
+        get_folder_context_menu: online_menu,
+        on_folder_context_menu: online_menu_select,
+    }
+}
+
 /// Allocate an instance and aim its vptr at the vtable stored inside the same
 /// allocation (which sidesteps Rust's lack of generic statics). The address is
 /// fixed once `Box::into_raw` has run, so the vptr is written after that.
@@ -439,6 +610,17 @@ pub unsafe fn dll_get_class_object_dsp<P: DspPlugin>(
     })
 }
 
+/// `DllGetClassObject` body for a browser OnlineSource plugin.
+pub unsafe fn dll_get_class_object_online<P: OnlineSourcePlugin>(
+    rclsid: *const Guid,
+    riid: *const Guid,
+    pp_object: *mut *mut c_void,
+) -> HRESULT {
+    dispatch(rclsid, riid, pp_object, &IID_IVDJPLUGINONLINESOURCE, || {
+        create_instance::<OnlineSlots, OnlineFields, P>(online_slots::<P>())
+    })
+}
+
 unsafe fn dispatch(
     rclsid: *const Guid,
     riid: *const Guid,
@@ -487,6 +669,8 @@ mod tests {
         assert_eq!(offset_of!(BasicInstance<Dummy>, hinstance), 8);
         assert_eq!(offset_of!(BasicInstance<Dummy>, cb), 16);
         assert_eq!(offset_of!(DspInstance<Dummy>, host_fields), 24);
+        assert_eq!(offset_of!(OnlineInstance<Dummy>, host_fields), 24);
+        assert_eq!(std::mem::size_of::<OnlineFields>(), 8);
         // DSP fields: SampleRate @+0, SongBpm @+4, SongPosBeats @+8; the C++
         // IVdjPluginDsp8 is 40 bytes, so our host-visible prefix must end there.
         assert_eq!(offset_of!(DspFields, sample_rate), 0);
@@ -513,6 +697,10 @@ mod tests {
         assert_eq!(offset_of!(DspSlots, on_start), 8 * 8);
         assert_eq!(offset_of!(DspSlots, on_stop), 9 * 8);
         assert_eq!(offset_of!(DspSlots, on_process_samples), 10 * 8);
+        assert_eq!(offset_of!(OnlineSlots, is_logged), 8 * 8);
+        assert_eq!(offset_of!(OnlineSlots, on_search), 12 * 8);
+        assert_eq!(offset_of!(OnlineSlots, get_stream_url), 14 * 8);
+        assert_eq!(offset_of!(OnlineSlots, on_folder_context_menu), 20 * 8);
     }
 
     #[test]

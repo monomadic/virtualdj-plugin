@@ -30,3 +30,18 @@ macro_rules! export_dsp_plugin {
         }
     };
 }
+
+/// Export an OnlineSource plugin for VirtualDJ's browser.
+#[macro_export]
+macro_rules! export_online_source_plugin {
+    ($ty:ty) => {
+        #[no_mangle]
+        pub unsafe extern "C" fn DllGetClassObject(
+            rclsid: *const $crate::sys::Guid,
+            riid: *const $crate::sys::Guid,
+            pp_object: *mut *mut ::std::ffi::c_void,
+        ) -> $crate::sys::HRESULT {
+            $crate::wrapper::dll_get_class_object_online::<$ty>(rclsid, riid, pp_object)
+        }
+    };
+}

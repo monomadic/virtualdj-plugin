@@ -66,6 +66,48 @@ pub const IID_IVDJPLUGINBUFFER8: Guid = Guid {
     data3: 0x41bf,
     data4: [0xa3, 0x6b, 0x04, 0xda, 0xf2, 0x67, 0x3b, 0x98],
 };
+pub const IID_IVDJPLUGINONLINESOURCE: Guid = Guid {
+    data1: 0x85d2_0f05,
+    data2: 0x0ccf,
+    data3: 0x4cab,
+    data4: [0xaa, 0x50, 0x1c, 0x04, 0xea, 0xb6, 0xb8, 0x5d],
+};
+
+/// C++ interfaces passed to OnlineSource methods (all pure virtual, no destructor).
+#[repr(C)]
+pub struct IVdjTracksList {
+    pub vtbl: *const IVdjTracksListVtbl,
+}
+#[repr(C)]
+pub struct IVdjTracksListVtbl {
+    pub add: unsafe extern "C" fn(
+        *mut IVdjTracksList,
+        *const c_char,
+        *const c_char,
+        *const c_char,
+        *const c_char,
+        *const c_char,
+        *const c_char,
+        *const c_char,
+        *const c_char,
+        *const c_char,
+        f32,
+        f32,
+        i32,
+        i32,
+        bool,
+        bool,
+    ),
+    pub finish: unsafe extern "C" fn(*mut IVdjTracksList),
+}
+#[repr(C)]
+pub struct IVdjString {
+    pub vtbl: *const IVdjStringVtbl,
+}
+#[repr(C)]
+pub struct IVdjStringVtbl {
+    pub assign: unsafe extern "C" fn(*mut IVdjString, *const c_char),
+}
 
 // Parameter type constants (`VDJPARAM_*`).
 pub const VDJPARAM_BUTTON: i32 = 0;
